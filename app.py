@@ -4,11 +4,9 @@ Drishyam CTF Lab: Dhyan Cable Vision & Rajakkad Archive Portal
 A self-contained Flask CTF Web Application featuring:
 - Educational CTF authentication challenge (SQLite query logic + OSINT lore discovery)
 - Atmospheric Drishyam Malayalam movie theme (serves bg.jpg + built-in Kerala night SVG fallback)
-- Home page with storyline welcome message & post-login SSH Key Vault div
+- Home page with storyline welcome message & post-login Relay Vault div
 """
 
-import base64
-import hashlib
 import os
 import sqlite3
 from pathlib import Path
@@ -29,29 +27,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "drishyam_rajakkad_oct_02_lab_session")
 
 DB_PATH = Path(__file__).resolve().parent / "drishyam_ctf.db"
-CTF_WEB_FLAG = "CTF{dR1sHy4m_02_0cT_aL1b1_v3r1f13d}"
-
-
-def generate_sample_ssh_keys():
-    """Generate a deterministic, realistic sample RSA key pair for the CTF lab vault."""
-    seed_material = b"drishyam-rajakkad-dhyan-cable-vision-october-02-alibi-seed"
-    blocks = []
-    for i in range(18):
-        digest = hashlib.sha512(seed_material + str(i).encode()).digest()
-        blocks.append(base64.b64encode(digest).decode("ascii"))
-    body_b64 = "".join(blocks)
-    wrapped_lines = [body_b64[i : i + 64] for i in range(0, len(body_b64), 64)]
-
-    header = "-----" + "BEGIN OPENSSH" + " SAMPLE KEY" + "-----"
-    footer = "-----" + "END OPENSSH" + " SAMPLE KEY" + "-----"
-    priv_key = "\n".join([header] + wrapped_lines + [footer])
-
-    pub_b64 = base64.b64encode(hashlib.sha512(seed_material).digest() * 3).decode("ascii")
-    pub_key = f"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ{pub_b64[:180]} georgekutty@rajakkad-cable-node"
-    return priv_key, pub_key
-
-
-SSH_PRIVATE_KEY, SSH_PUBLIC_KEY = generate_sample_ssh_keys()
+CTF_WEB_FLAG = "THM{dR1sHy4m_02_0cT_aL1b1_v3r1f13d}"
+FTP_USER = "dhyan_ftp"
+FTP_PASS = "BismiLodge_02Oct"
 
 
 def get_db():
@@ -72,7 +50,7 @@ def close_connection(exception):
 
 def init_db():
     """Initialize and seed the SQLite database with Drishyam storyline accounts."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -86,7 +64,6 @@ def init_db():
         )
         """
     )
-    cursor.execute("DELETE FROM users")
     users_seed = [
         (
             "georgekutty",
@@ -111,7 +88,7 @@ def init_db():
         ),
     ]
     cursor.executemany(
-        "INSERT INTO users (username, password, full_name, role, clearance_note) VALUES (?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO users (username, password, full_name, role, clearance_note) VALUES (?, ?, ?, ?, ?)",
         users_seed,
     )
     conn.commit()
@@ -333,7 +310,7 @@ BASE_TEMPLATE = """
             margin-top: 0.25rem;
         }
 
-        /* Post-login SSH Keys Div */
+        /* Post-login Relay Vault Div */
         #ssh-keys-div {
             border: 1px solid rgba(16, 185, 129, 0.45);
             background: linear-gradient(165deg, rgba(8, 25, 20, 0.92), rgba(5, 14, 12, 0.96));
@@ -502,7 +479,7 @@ BASE_TEMPLATE = """
         <nav>
             <a href="{{ url_for('home') }}" class="nav-link">Home</a>
             {% if session.get('user') %}
-                <a href="#ssh-keys-div" class="nav-link">SSH Keys</a>
+                <a href="#ssh-keys-div" class="nav-link">Relay Vault</a>
                 <a href="{{ url_for('logout') }}" class="nav-link nav-btn">Logout ({{ session['user']['username'] }})</a>
             {% else %}
                 <a href="{{ url_for('login') }}" class="nav-link nav-btn">Operator Login</a>
@@ -549,12 +526,12 @@ HOME_CONTENT = """
         {% if session.get('user') %}
             Welcome back, <strong>{{ session['user']['full_name'] }}</strong>
             (<em>{{ session['user']['role'] }}</em>). Your session is verified against the
-            Rajakkad High-Range Node. The post-login SSH keys for the cable office relay server
+            Rajakkad High-Range Node. Your Stage 1 flag and internal FTP server credentials for the cable office relay backup
             are displayed in the vault panel below.
         {% else %}
             Welcome to the internal transmission and surveillance portal of <strong>Dhyan Cable Vision, Rajakkad</strong>.
             Only authenticated cable operators and cleared officers with October 2nd verification may view the
-            relay server SSH credentials.
+            relay archive vault.
         {% endif %}
     </p>
 
@@ -597,40 +574,36 @@ HOME_CONTENT = """
 </div>
 
 {% if session.get('user') %}
-<!-- Dedicated Post-Login Div Displaying SSH Keys -->
+<!-- Dedicated Post-Login Vault Div -->
 <div id="ssh-keys-div" class="card">
     <div class="vault-header">
         <div>
             <span class="tag-pill" style="color: #6ee7b7; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.12);">
-                🔓 Post-Login SSH Key Vault
+                🔓 Post-Login Relay Vault
             </span>
-            <h3 style="font-size: 1.45rem; color: #ffffff;">Rajakkad Relay Server — SSH Key Pair</h3>
+            <h3 style="font-size: 1.45rem; color: #ffffff;">Rajakkad Relay Archive — Stage 1 Vault</h3>
             <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.2rem;">
                 {{ session['user']['clearance_note'] }}
             </p>
         </div>
         <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
-            <button class="btn btn-outline" onclick="copyBlock('ssh-private-key', this)">Copy Private Key</button>
-            <a href="{{ url_for('download_ssh_key') }}" class="btn btn-amber">Download id_rsa</a>
+            <button class="btn btn-outline" onclick="copyBlock('ftp-creds-block', this)">Copy FTP Credentials</button>
         </div>
     </div>
 
     <div class="flag-banner">
         <span><strong>Stage 1 Flag:</strong> {{ flag }}</span>
-        <span><strong>SSH Target:</strong> georgekutty@rajakkad-node (Port 2222)</span>
+        <span><strong>SSH Target:</strong> georgekutty@rajakkad-node (Port 22)</span>
     </div>
 
     <div class="key-box-label">
-        <span>SSH PRIVATE KEY (id_rsa — 2048-bit Sample Lab Key)</span>
-        <span>chmod 600 id_rsa && ssh -i id_rsa georgekutty@&lt;BOX_IP&gt; -p 2222</span>
+        <span>INTERNAL FTP BACKUP CREDENTIALS (Port 21)</span>
+        <span>ftp &lt;BOX_IP&gt; 21</span>
     </div>
-    <pre id="ssh-private-key" class="ssh-key-block">{{ ssh_private_key }}</pre>
-
-    <div class="key-box-label">
-        <span>AUTHORIZED PUBLIC KEY (id_rsa.pub)</span>
-        <button class="btn btn-outline" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;" onclick="copyBlock('ssh-public-key', this)">Copy Public Key</button>
-    </div>
-    <pre id="ssh-public-key" class="ssh-key-block" style="color: #fde68a;">{{ ssh_public_key }}</pre>
+    <pre id="ftp-creds-block" class="ssh-key-block">Service : Internal FTP Backup Server (Port 21)
+User    : {{ ftp_user }}
+Pass    : {{ ftp_pass }}
+Note    : Georgekutty moved the cable office relay keys off the web portal to this FTP server.</pre>
 </div>
 {% endif %}
 """
@@ -641,7 +614,7 @@ LOGIN_CONTENT = """
         <span class="tag-pill">Restricted Terminal #04</span>
         <h2 style="font-size: 1.55rem; margin-bottom: 0.4rem;">Operator Login</h2>
         <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-            Authenticate with your Dhyan Cable Vision operator credentials to view the SSH Key Vault.
+            Authenticate with your Dhyan Cable Vision operator credentials to view the Relay Vault.
         </p>
 
         {% if sql_error %}
@@ -663,7 +636,7 @@ LOGIN_CONTENT = """
                        placeholder="Enter passkey..." required>
             </div>
             <button type="submit" class="btn btn-amber" style="width: 100%; justify-content: center; padding: 0.8rem;">
-                Sign In & Reveal SSH Keys
+                Sign In & Reveal Relay Vault
             </button>
         </form>
     </div>
@@ -675,9 +648,9 @@ LOGIN_CONTENT = """
 def home():
     rendered_home = render_template_string(
         HOME_CONTENT,
-        ssh_private_key=SSH_PRIVATE_KEY,
-        ssh_public_key=SSH_PUBLIC_KEY,
         flag=CTF_WEB_FLAG,
+        ftp_user=FTP_USER,
+        ftp_pass=FTP_PASS,
     )
     return render_template_string(BASE_TEMPLATE, content=rendered_home)
 
@@ -729,20 +702,8 @@ def login():
 @app.route("/logout")
 def logout():
     session.pop("user", None)
-    flash("Logged out. SSH Key Vault locked.", "success")
+    flash("Logged out. Relay Vault locked.", "success")
     return redirect(url_for("home"))
-
-
-@app.route("/download-key")
-def download_ssh_key():
-    if not session.get("user"):
-        flash("Please log in first to download the SSH key.", "error")
-        return redirect(url_for("login"))
-    return Response(
-        SSH_PRIVATE_KEY + "\n",
-        mimetype="text/plain",
-        headers={"Content-Disposition": "attachment; filename=id_rsa"},
-    )
 
 
 @app.route("/robots.txt")
@@ -763,7 +724,7 @@ def alibi_notes():
         "=== DHYAN CABLE VISION — DESK DRAWER MEMO ===\n"
         "Operator: georgekutty\n"
         "Alibi Receipts: Bismi Lodge, Cinema Ticket, Hotel Jaya (02 Oct - 03 Oct)\n"
-        "Backup Passkey: 02Oct_SwamiRetreat!\n"
+        "Relay Backup Note: Georgekutty backed up the cable office relay keys to the internal FTP server (port 21).\n"
     )
     return Response(content, mimetype="text/plain")
 
@@ -801,7 +762,9 @@ def background_image():
     return Response(svg_backdrop, mimetype="image/svg+xml")
 
 
+# Ensure the database is initialized when launched under WSGI/Gunicorn as well as directly
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
